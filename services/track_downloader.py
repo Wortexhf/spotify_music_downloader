@@ -2,7 +2,7 @@ import asyncio
 import os
 import spotifydata
 
-async def prepare_track(track_info: dict, download_dir: str) -> tuple[str|None|str|None]:
+async def prepare_track(track_info: dict, download_dir: str) -> tuple[str | None, str | None]:
     safe_name = "".join(
         c for c in track_info['name']
         if c.isalnum() or c in (' ', '.', '_')

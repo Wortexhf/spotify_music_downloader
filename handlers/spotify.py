@@ -5,6 +5,8 @@ from aiogram import F
 from core.bot import dp
 from aiogram.types import Message
 from services.track_sender import send_track
+from services.track_downloader import prepare_track
+from config import DOWNLOAD_DIR
 
 @dp.message(F.text.contains("spotify"))
 async def handle_spotify_link(message: Message):
@@ -17,12 +19,20 @@ async def handle_spotify_link(message: Message):
         track_info = await get_track_info(real_url)
 
         if track_info:
-            await send_track(
-                message,
-                track_info,
-                status_msg=status_msg,
-                send_photo_msg=True
-            )
+            await status_msg.edit_text("⏳ Downloading track...")
+            audio_path, cover_path = await prepare_track(track_info, DOWNLOAD_DIR)
+
+            if audio_path:
+                await send_track(
+                    message,
+                    track_info,
+                    audio_path,
+                    cover_path,
+                    status_msg=status_msg,
+                    send_photo_msg=True
+                )
+            else:
+                await status_msg.edit_text("❌ Failed to download track.")
         else:
             await status_msg.edit_text("❌ Track not found or invalid link.")
 
@@ -33,4 +43,24 @@ async def handle_spotify_link(message: Message):
 
         if not tracks:
             await status_msg.edit_text("❌ Failed to load album.")
-            return 
+            return
+
+        total = len(tracks)
+        for i, track_info in enumerate(tracks, 1):
+            await status_msg.edit_text(f"⏳ Downloading track {i}/{total}...")
+            audio_path, cover_path = await prepare_track(track_info, DOWNLOAD_DIR)
+
+            if audio_path:
+                await send_track(
+                    message,
+                    track_info,
+                    audio_path,
+                    cover_path,
+                    status_msg=None,  # Do not delete/update global status_msg in send_track for albums
+                    send_photo_msg=False
+                )
+            else:
+                await message.answer(f"❌ Failed to download: {track_info['full_name']}")
+
+        await status_msg.edit_text(f"✅ Finished! Sent {total} tracks.")
+ 

@@ -18,8 +18,10 @@ async def handle_spotify_link(message: Message):
 
         if track_info:
             await send_track(
-                message,
-                track_info,
+                message, 
+                track_info,      
+                audio_path=track_info.get('file_path'), 
+                cover_path=track_info.get('cover_path'),
                 status_msg=status_msg,
                 send_photo_msg=True
             )
@@ -33,4 +35,4 @@ async def handle_spotify_link(message: Message):
 
         if not tracks:
             await status_msg.edit_text("❌ Failed to load album.")
-            return 
+            return

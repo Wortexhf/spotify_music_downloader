@@ -44,11 +44,26 @@ def get_track_info(spotify_url):
         name = track['name']
         artist = track['artists'][0]['name']
         cover_url = track['album']['images'][0]['url'] if track['album']['images'] else None
+        full_name = f"{artist} - {name}"
+
+        search_query = full_name
+        file_path = download_track(search_query)
+
+        cover_path = None
+        if cover_url:
+            cover_filename = f"cover_{name[:30].replace(' ', '_')}.jpg"
+            cover_path = download_cover(cover_url, cover_filename)
+
+        if file_path and cover_path:
+            set_mp3_cover(file_path, cover_path)
+
         return {
             "name": name,
             "artist": artist,
             "cover_url": cover_url,
-            "full_name": f"{artist} - {name}"
+            "full_name": full_name,
+            "file_path": file_path,    
+            "cover_path": cover_path   
         }
     except Exception as e:
         print(f"Error fetching track: {e}")

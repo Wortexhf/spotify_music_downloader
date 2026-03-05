@@ -234,8 +234,6 @@ docker-compose.override.yml
 
 
 downloads/
-ffmpeg.exe
-ffprobe.exe
 .cachegit
 covers/
 songs/

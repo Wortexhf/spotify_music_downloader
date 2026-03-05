@@ -8,3 +8,4 @@ venv/
 downloads/
 ffmpeg.exe
 ffprobe.exe
+.cache

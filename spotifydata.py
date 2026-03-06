@@ -8,9 +8,9 @@ from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, error
 import sys
 import io
+
 sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
 sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
-
 
 load_dotenv()
 CLIENT_ID = os.getenv("SPOTIPY_CLIENT_ID")
@@ -18,7 +18,7 @@ CLIENT_SECRET = os.getenv("SPOTIPY_CLIENT_SECRET")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DOWNLOAD_DIR = os.path.join(BASE_DIR, "downloads")
-FFMPEG_PATH = BASE_DIR  
+FFMPEG_PATH = BASE_DIR
 
 if CLIENT_ID and CLIENT_SECRET:
     auth_manager = SpotifyClientCredentials(client_id=CLIENT_ID, client_secret=CLIENT_SECRET)
@@ -50,9 +50,9 @@ def get_track_info(spotify_url):
         artist = track['artists'][0]['name']
         cover_url = track['album']['images'][0]['url'] if track['album']['images'] else None
         full_name = f"{artist} - {name}"
+        duration_sec = track['duration_ms'] // 1000
 
-        search_query = full_name
-        file_path = download_track(search_query)
+        file_path = download_track(full_name, duration_hint=duration_sec)
 
         cover_path = None
         if cover_url:
@@ -67,8 +67,8 @@ def get_track_info(spotify_url):
             "artist": artist,
             "cover_url": cover_url,
             "full_name": full_name,
-            "file_path": file_path,    
-            "cover_path": cover_path   
+            "file_path": file_path,
+            "cover_path": cover_path
         }
     except Exception as e:
         print(f"Error fetching track: {e}")
@@ -80,7 +80,6 @@ def get_playlist_tracks(url):
         return []
     url = resolve_url(url)
     try:
-        tracks = []
         if "album" in url:
             results = sp.album_tracks(url, market="US")
             album_info = sp.album(url, market="US")
@@ -112,7 +111,8 @@ def get_playlist_tracks(url):
                 "name": name,
                 "artist": artist,
                 "cover_url": track_cover,
-                "full_name": f"{artist} - {name}"
+                "full_name": f"{artist} - {name}",
+                "duration_sec": track.get('duration_ms', 0) // 1000
             })
         return final_data
     except Exception as e:
@@ -136,7 +136,8 @@ def get_artist_top_tracks(url):
                 "name": name,
                 "artist": artist,
                 "cover_url": cover_url,
-                "full_name": f"{artist} - {name}"
+                "full_name": f"{artist} - {name}",
+                "duration_sec": track.get('duration_ms', 0) // 1000
             })
         return final_data
     except Exception as e:
@@ -154,18 +155,27 @@ class MyLogger:
         try:
             print(f"WARNING: {msg}")
         except UnicodeEncodeError:
-            print(f"WARNING: [non-printable characters]")
+            print("WARNING: [non-printable characters]")
 
     def error(self, msg):
         try:
             print(f"ERROR: {msg}")
         except UnicodeEncodeError:
-            print(f"ERROR: [non-printable characters]")
+            print("ERROR: [non-printable characters]")
 
 
-def download_track(search_query, output_dir=DOWNLOAD_DIR):
+def download_track(search_query, output_dir=DOWNLOAD_DIR, duration_hint=None):
     os.makedirs(output_dir, exist_ok=True)
     outtmpl = os.path.join(output_dir, '%(title)s.%(ext)s')
+
+    downloaded_file = []
+
+    def progress_hook(d):
+        if d['status'] == 'finished':
+            path = d.get('filename', '')
+            mp3_path = os.path.splitext(path)[0] + '.mp3'
+            downloaded_file.append(mp3_path)
+            print(f"HOOK: finished -> {mp3_path}")
 
     ydl_opts = {
         'format': 'bestaudio/best',
@@ -175,49 +185,69 @@ def download_track(search_query, output_dir=DOWNLOAD_DIR):
             'preferredquality': '192',
         }],
         'outtmpl': outtmpl,
-        'quiet': True,
+        'quiet': False,  # <-- змінили на False щоб бачити все
         'noplaylist': True,
         'ffmpeg_location': FFMPEG_PATH,
         'logger': MyLogger(),
+        'progress_hooks': [progress_hook],
     }
 
-    downloaded_file = []
-
-    def progress_hook(d):
-        if d['status'] == 'finished':
-            # yt-dlp дає шлях до файлу ДО конвертації
-            path = d.get('filename', '')
-            # після FFmpeg буде .mp3
-            mp3_path = os.path.splitext(path)[0] + '.mp3'
-            downloaded_file.append(mp3_path)
-
-    ydl_opts['progress_hooks'] = [progress_hook]
-
     try:
+        search_query_clean = f"{search_query} official audio"
+        print(f"SEARCH: {search_query_clean}, duration_hint={duration_hint}")
+
+        search_opts = {
+            'quiet': False,
+            'skip_download': True,
+            'noplaylist': True,
+            'logger': MyLogger(),
+        }
+
+        with yt_dlp.YoutubeDL(search_opts) as ydl:
+            info = ydl.extract_info(f"ytsearch5:{search_query_clean}", download=False)
+
+        best_url = None
+        if info and 'entries' in info:
+            entries = [e for e in info['entries'] if e and not e.get('is_live')]
+            print(f"FOUND {len(entries)} entries:")
+            for e in entries:
+                print(f"  - {e.get('title')} | {e.get('duration')}s | {e.get('webpage_url')}")
+
+            if duration_hint and entries:
+                best = min(entries, key=lambda e: abs((e.get('duration') or 9999) - duration_hint))
+            elif entries:
+                best = entries[0]
+            else:
+                best = None
+
+            if best:
+                best_url = best['webpage_url']
+                print(f"SELECTED: {best.get('title')} ({best.get('duration')}s)")
+
+        if not best_url:
+            print("ERROR: No suitable video found")
+            return None
+
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            ydl.extract_info(f"ytsearch1:{search_query}", download=True)
+            ydl.extract_info(best_url, download=True)
 
         if downloaded_file and os.path.exists(downloaded_file[0]):
             print(f"Downloaded: {downloaded_file[0]}")
             return downloaded_file[0]
 
-        # Fallback: шукаємо новий файл за часом модифікації
-        all_mp3 = [
-            os.path.join(output_dir, f)
-            for f in os.listdir(output_dir)
-            if f.endswith('.mp3')
-        ]
+        all_mp3 = [os.path.join(output_dir, f) for f in os.listdir(output_dir) if f.endswith('.mp3')]
         if all_mp3:
             newest = max(all_mp3, key=os.path.getmtime)
             print(f"Downloaded (fallback): {newest}")
             return newest
 
-        print(f"ERROR: No file found after download.")
+        print("ERROR: No file found after download.")
         return None
 
     except Exception as e:
         print(f"Download error: {e}")
         return None
+
 
 def download_cover(url, filename, output_dir=DOWNLOAD_DIR):
     try:

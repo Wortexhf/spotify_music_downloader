@@ -46,7 +46,9 @@ async def handle_spotify_link(message: Message):
 
                 file_path = await asyncio.to_thread(
                     spotifydata.download_track,
-                    track['full_name']
+                    track['full_name'],
+                    spotifydata.DOWNLOAD_DIR,
+                    track.get('duration_sec')
                 )
 
                 cover_path = None
@@ -67,7 +69,7 @@ async def handle_spotify_link(message: Message):
                     audio_path=file_path,
                     cover_path=cover_path,
                     status_msg=None,
-                    send_photo_msg=True
+                    send_photo_msg=False
                 )
 
             except Exception as e:

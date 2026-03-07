@@ -8,6 +8,7 @@ import yt_dlp
 from dotenv import load_dotenv
 from mutagen.mp3 import MP3
 from mutagen.id3 import ID3, APIC, error as ID3Error
+from PIL import Image
 
 load_dotenv()
 
@@ -96,7 +97,6 @@ def get_collection_tracks(url: str) -> list:
             album_info = sp.album(album_id, market="US")
             cover_url = album_info['images'][0]['url'] if album_info['images'] else None
 
-            # Збираємо всі треки з пагінацією
             tracks_raw = album_info['tracks']['items']
             next_page = album_info['tracks'].get('next')
             while next_page:
@@ -104,7 +104,6 @@ def get_collection_tracks(url: str) -> list:
                 tracks_raw.extend(page['items'])
                 next_page = page.get('next')
 
-            # album_tracks не має external_ids — запитуємо кожен трек окремо через sp.track()
             final = []
             for t in tracks_raw:
                 if not t:
@@ -114,7 +113,6 @@ def get_collection_tracks(url: str) -> list:
                     final.append(_track_to_dict(full_track, cover_url))
                 except Exception as e:
                     logger.warning(f"Failed to fetch track {t.get('name')}: {e}")
-                    # Fallback без ISRC
                     final.append(_track_to_dict(t, cover_url))
 
         else:
@@ -171,7 +169,6 @@ def _pick_best(entries: list, artist: str, track_name: str, duration_hint: int |
         filtered = [e for e in entries if not any(w in (e.get('title') or '').lower() for w in UNWANTED)]
         if filtered:
             entries = filtered
-            logger.debug(f"After unwanted filter: {len(entries)} entries")
 
     matched = [
         e for e in entries
@@ -180,7 +177,6 @@ def _pick_best(entries: list, artist: str, track_name: str, duration_hint: int |
     ]
     if matched:
         entries = matched
-        logger.debug(f"After artist+track match: {len(entries)} entries")
 
     if duration_hint:
         return min(entries, key=lambda e: abs((e.get('duration') or 9999) - duration_hint))
@@ -263,6 +259,13 @@ def download_cover(url: str, filename: str, output_dir: str = DOWNLOAD_DIR) -> s
         r.raise_for_status()
         with open(filepath, 'wb') as f:
             f.write(r.content)
+
+        # Resize до 320x320 для Telegram thumbnail
+        img = Image.open(filepath)
+        img = img.convert("RGB")
+        img.thumbnail((320, 320), Image.LANCZOS)
+        img.save(filepath, "JPEG", quality=85)
+        logger.info(f"Cover downloaded and resized: {filepath}")
         return filepath
     except Exception as e:
         logger.error(f"download_cover error: {e}")

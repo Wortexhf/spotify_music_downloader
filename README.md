@@ -1,107 +1,67 @@
-# 🎵 Spotify Downloader Bot
+# Spotify Downloader Bot
 
-A Telegram bot that downloads tracks and albums from Spotify in MP3 format with embedded cover art.
+A Telegram bot that downloads tracks and albums from Spotify as MP3 with embedded cover art.
 
 ## How it works
 
-1. You send a Spotify link to the bot
-2. The bot fetches track metadata from the Spotify API
-3. Audio is downloaded from YouTube via yt-dlp
-4. Cover art is embedded into the MP3 file
-5. The bot sends you the audio file directly in Telegram
+1. Send a Spotify link to the bot
+2. Bot fetches track metadata from Spotify API (including ISRC)
+3. Audio is found on YouTube via ISRC for accurate matching
+4. Cover art is resized and embedded into the MP3
+5. Bot sends you the audio file in Telegram
 
-## Installation
+## Setup
 
 ### Requirements
-- Python 3.10+
-- FFmpeg (place in project folder, see below)
+- Python 3.12+
+- FFmpeg (place `ffmpeg.exe` and `ffprobe.exe` in project folder)
 - Telegram Bot Token
 - Spotify API credentials
 
-### Dependencies
+### Install dependencies
 
 ```bash
-pip install aiogram spotipy yt-dlp requests mutagen python-dotenv
+pip install -r requirements.txt
 ```
-
-### FFmpeg setup
-
-Download FFmpeg and place it in the project folder:
-
-```
-spotify_bot/
-├── ffmpeg/
-│   └── bin/
-│       ├── ffmpeg.exe
-│       └── ffprobe.exe
-├── bot.py
-├── spotifydata.py
-└── ...
-```
-
-Download FFmpeg: https://ffmpeg.org/download.html
 
 ### Environment variables
 
-Create a `.env` file in the project root:
+Create a `.env` file:
 
-```env
+```
 BOT_TOKEN=your_telegram_bot_token
 SPOTIPY_CLIENT_ID=your_spotify_client_id
 SPOTIPY_CLIENT_SECRET=your_spotify_client_secret
 ```
 
-Get Telegram token: https://t.me/BotFather
+- Telegram token: https://t.me/BotFather
+- Spotify credentials: https://developer.spotify.com/dashboard
 
-Get Spotify credentials: https://developer.spotify.com/dashboard
-
-## Usage
+### Run
 
 ```bash
-python bot.py
+python main.py
 ```
 
-Then open your bot in Telegram and send a Spotify link.
-
-## Supported link types
+## Supported links
 
 | Type | Example |
 |------|---------|
 | Track | `open.spotify.com/track/...` |
 | Album | `open.spotify.com/album/...` |
-| Short link | `spotify.link/...` or `spoti.fi/...` |
-
-Playlists and artist profiles are not currently supported.
+| Playlist | `open.spotify.com/playlist/...` |
+| Short link | `spotify.link/...` |
 
 ## Project structure
 
 ```
-spotify_bot/
-├── bot.py           # Telegram bot, message handlers
-├── spotifydata.py   # Spotify API, yt-dlp download logic
-├── ffmpeg/          # FFmpeg binaries (not in git)
-├── downloads/       # Temporary download folder (auto-created, not in git)
-└── .env             # Credentials (not in git)
+spotify_music_downloader/
+├── main.py          # Bot + handlers
+├── downloader.py    # Spotify API + YouTube download logic
+├── requirements.txt
+├── .env             # Credentials (not in git)
+├── ffmpeg.exe
+├── ffprobe.exe
+├── downloads/       # Temporary files (auto-created)
+└── logs/            # Log files (auto-created)
 ```
-
-## .gitignore
-
-```
-.venv/
-downloads/
-ffmpeg/
-.env
-__pycache__/
-*.pyc
-```
-
-## Dependencies
-
-| Library | Purpose |
-|---------|---------|
-| `aiogram` | Telegram bot framework |
-| `spotipy` | Spotify API client |
-| `yt-dlp` | Audio downloading from YouTube |
-| `mutagen` | Embedding cover art into MP3 |
-| `requests` | HTTP requests |
-| `python-dotenv` | Loading `.env` variables |

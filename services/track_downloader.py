@@ -27,7 +27,9 @@ async def prepare_track(track_info: dict, download_dir: str) -> tuple[str | None
         search_query,
         download_dir,
         track_info.get('duration_sec'),
-        track_info.get('isrc')
+        track_info.get('isrc'),
+        track_info.get('artist'),
+        track_info.get('name')
     )
 
     if audio_path and cover_path and os.path.exists(cover_path):

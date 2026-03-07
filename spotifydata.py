@@ -163,7 +163,7 @@ class MyLogger:
         logger.error(f"yt-dlp: {msg}")
 
 
-UNWANTED_KEYWORDS = ['slowed', 'reverb', 'sped up', 'nightcore', 'remix', 'cover', 'karaoke', 'instrumental']
+UNWANTED_KEYWORDS = ['slowed', 'reverb', 'sped up', 'nightcore', 'remix', 'cover', 'karaoke', 'instrumental', 'ringtone']
 
 
 def search_youtube(query, search_opts, count=5):
@@ -174,7 +174,14 @@ def search_youtube(query, search_opts, count=5):
     return []
 
 
-def pick_best(entries, duration_hint, track_name=""):
+def title_matches(title, artist, track_name):
+    title_lower = title.lower()
+    artist_lower = artist.lower()
+    track_lower = track_name.lower()
+    return artist_lower in title_lower and track_lower in title_lower
+
+
+def pick_best(entries, duration_hint, artist="", track_name=""):
     if not entries:
         return None
 
@@ -190,12 +197,22 @@ def pick_best(entries, duration_hint, track_name=""):
             entries = filtered
             logger.debug(f"Filtered to {len(entries)} entries after removing slowed/remix/etc")
 
+    # Пріоритет — entries де title містить і артиста і назву треку
+    if artist and track_name:
+        matched = [
+            e for e in entries
+            if title_matches(e.get('title', ''), artist, track_name)
+        ]
+        if matched:
+            entries = matched
+            logger.debug(f"Narrowed to {len(entries)} entries matching artist+track name")
+
     if duration_hint:
         return min(entries, key=lambda e: abs((e.get('duration') or 9999) - duration_hint))
     return entries[0]
 
 
-def download_track(search_query, output_dir=DOWNLOAD_DIR, duration_hint=None, isrc=None):
+def download_track(search_query, output_dir=DOWNLOAD_DIR, duration_hint=None, isrc=None, artist=None, track_name=None):
     os.makedirs(output_dir, exist_ok=True)
     outtmpl = os.path.join(output_dir, '%(title)s.%(ext)s')
 
@@ -240,15 +257,15 @@ def download_track(search_query, output_dir=DOWNLOAD_DIR, duration_hint=None, is
                 logger.info(f"ISRC search found {len(entries)} result(s)")
 
         if not entries:
-            fallback_query = f"{search_query} official audio"
-            logger.info(f"Searching by query: {fallback_query}")
-            entries = search_youtube(fallback_query, search_opts, count=5)
+            query = f"{artist} {track_name} official audio" if artist and track_name else f"{search_query} official audio"
+            logger.info(f"Searching by query: {query}")
+            entries = search_youtube(query, search_opts, count=8)
 
         logger.info(f"Found {len(entries)} entries for '{search_query}':")
         for e in entries:
             logger.info(f"  - {e.get('title')} | {e.get('duration')}s | {e.get('webpage_url')}")
 
-        best = pick_best(entries, duration_hint, search_query)
+        best = pick_best(entries, duration_hint, artist=artist or "", track_name=track_name or search_query)
 
         if not best:
             logger.error("No suitable video found")

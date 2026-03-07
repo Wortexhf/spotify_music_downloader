@@ -2,7 +2,8 @@ import asyncio
 import os
 import spotifydata
 
-async def prepare_track(track_info: dict, download_dir: str) -> tuple[str|None|str|None]:
+
+async def prepare_track(track_info: dict, download_dir: str) -> tuple[str | None, str | None]:
     safe_name = "".join(
         c for c in track_info['name']
         if c.isalnum() or c in (' ', '.', '_')
@@ -24,10 +25,12 @@ async def prepare_track(track_info: dict, download_dir: str) -> tuple[str|None|s
     audio_path = await asyncio.to_thread(
         spotifydata.download_track,
         search_query,
-        download_dir
+        download_dir,
+        track_info.get('duration_sec'),
+        track_info.get('isrc')
     )
 
-    if cover_path and os.path.exists(cover_path):
+    if audio_path and cover_path and os.path.exists(cover_path):
         await asyncio.to_thread(
             spotifydata.set_mp3_cover,
             audio_path,

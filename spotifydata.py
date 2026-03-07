@@ -48,27 +48,18 @@ def get_track_info(spotify_url):
         track = sp.track(spotify_url, market="US")
         name = track['name']
         artist = track['artists'][0]['name']
+        isrc = track['external_ids'].get('isrc')
         cover_url = track['album']['images'][0]['url'] if track['album']['images'] else None
         full_name = f"{artist} - {name}"
         duration_sec = track['duration_ms'] // 1000
-
-        file_path = download_track(full_name, duration_hint=duration_sec)
-
-        cover_path = None
-        if cover_url:
-            cover_filename = f"cover_{name[:30].replace(' ', '_')}.jpg"
-            cover_path = download_cover(cover_url, cover_filename)
-
-        if file_path and cover_path:
-            set_mp3_cover(file_path, cover_path)
 
         return {
             "name": name,
             "artist": artist,
             "cover_url": cover_url,
             "full_name": full_name,
-            "file_path": file_path,
-            "cover_path": cover_path
+            "duration_sec": duration_sec,
+            "isrc": isrc
         }
     except Exception as e:
         print(f"Error fetching track: {e}")
@@ -104,6 +95,7 @@ def get_playlist_tracks(url):
                 continue
             name = track['name']
             artist = track['artists'][0]['name']
+            isrc = track.get('external_ids', {}).get('isrc')
             track_cover = cover_url if is_album else (
                 track['album']['images'][0]['url'] if track['album']['images'] else None
             )
@@ -112,7 +104,8 @@ def get_playlist_tracks(url):
                 "artist": artist,
                 "cover_url": track_cover,
                 "full_name": f"{artist} - {name}",
-                "duration_sec": track.get('duration_ms', 0) // 1000
+                "duration_sec": track.get('duration_ms', 0) // 1000,
+                "isrc": isrc
             })
         return final_data
     except Exception as e:
@@ -131,13 +124,15 @@ def get_artist_top_tracks(url):
         for track in results['tracks']:
             name = track['name']
             artist = track['artists'][0]['name']
+            isrc = track.get('external_ids', {}).get('isrc')
             cover_url = track['album']['images'][0]['url'] if track['album']['images'] else None
             final_data.append({
                 "name": name,
                 "artist": artist,
                 "cover_url": cover_url,
                 "full_name": f"{artist} - {name}",
-                "duration_sec": track.get('duration_ms', 0) // 1000
+                "duration_sec": track.get('duration_ms', 0) // 1000,
+                "isrc": isrc
             })
         return final_data
     except Exception as e:
@@ -164,7 +159,23 @@ class MyLogger:
             print("ERROR: [non-printable characters]")
 
 
-def download_track(search_query, output_dir=DOWNLOAD_DIR, duration_hint=None):
+def search_youtube(query, search_opts, count=5):
+    with yt_dlp.YoutubeDL(search_opts) as ydl:
+        info = ydl.extract_info(f"ytsearch{count}:{query}", download=False)
+    if info and 'entries' in info:
+        return [e for e in info['entries'] if e and not e.get('is_live')]
+    return []
+
+
+def pick_best(entries, duration_hint):
+    if not entries:
+        return None
+    if duration_hint:
+        return min(entries, key=lambda e: abs((e.get('duration') or 9999) - duration_hint))
+    return entries[0]
+
+
+def download_track(search_query, output_dir=DOWNLOAD_DIR, duration_hint=None, isrc=None):
     os.makedirs(output_dir, exist_ok=True)
     outtmpl = os.path.join(output_dir, '%(title)s.%(ext)s')
 
@@ -185,48 +196,46 @@ def download_track(search_query, output_dir=DOWNLOAD_DIR, duration_hint=None):
             'preferredquality': '192',
         }],
         'outtmpl': outtmpl,
-        'quiet': False,  # <-- змінили на False щоб бачити все
+        'quiet': False,
         'noplaylist': True,
         'ffmpeg_location': FFMPEG_PATH,
         'logger': MyLogger(),
         'progress_hooks': [progress_hook],
     }
 
+    search_opts = {
+        'quiet': False,
+        'skip_download': True,
+        'noplaylist': True,
+        'logger': MyLogger(),
+    }
+
     try:
-        search_query_clean = f"{search_query} official audio"
-        print(f"SEARCH: {search_query_clean}, duration_hint={duration_hint}")
+        entries = []
 
-        search_opts = {
-            'quiet': False,
-            'skip_download': True,
-            'noplaylist': True,
-            'logger': MyLogger(),
-        }
+        if isrc:
+            print(f"SEARCH by ISRC: {isrc}")
+            entries = search_youtube(isrc, search_opts, count=3)
+            if entries:
+                print(f"ISRC search found {len(entries)} result(s)")
 
-        with yt_dlp.YoutubeDL(search_opts) as ydl:
-            info = ydl.extract_info(f"ytsearch5:{search_query_clean}", download=False)
+        if not entries:
+            fallback_query = f"{search_query} official audio"
+            print(f"SEARCH by query: {fallback_query}")
+            entries = search_youtube(fallback_query, search_opts, count=5)
 
-        best_url = None
-        if info and 'entries' in info:
-            entries = [e for e in info['entries'] if e and not e.get('is_live')]
-            print(f"FOUND {len(entries)} entries:")
-            for e in entries:
-                print(f"  - {e.get('title')} | {e.get('duration')}s | {e.get('webpage_url')}")
+        print(f"FOUND {len(entries)} entries:")
+        for e in entries:
+            print(f"  - {e.get('title')} | {e.get('duration')}s | {e.get('webpage_url')}")
 
-            if duration_hint and entries:
-                best = min(entries, key=lambda e: abs((e.get('duration') or 9999) - duration_hint))
-            elif entries:
-                best = entries[0]
-            else:
-                best = None
+        best = pick_best(entries, duration_hint)
 
-            if best:
-                best_url = best['webpage_url']
-                print(f"SELECTED: {best.get('title')} ({best.get('duration')}s)")
-
-        if not best_url:
+        if not best:
             print("ERROR: No suitable video found")
             return None
+
+        best_url = best['webpage_url']
+        print(f"SELECTED: {best.get('title')} ({best.get('duration')}s)")
 
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.extract_info(best_url, download=True)
